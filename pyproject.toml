@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "GoogleOpenAgentOps"
+version = "1.0.0"
+description = "Google Cloud Native & Zero-Cost Observability, Tracing, and Token Economics SDK for Autonomous AI Agents and Multi-Agent Swarms"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [
+  { name = "Abhimanyu Panda", email = "abhimanyu@googleopenagentops.dev" }
+]
+keywords = [
+  "google-cloud",
+  "gcp",
+  "cloud-trace",
+  "cloud-monitoring",
+  "cloud-logging",
+  "agentops",
+  "gemini",
+  "gemini-3.8-flash",
+  "ai-agents",
+  "opentelemetry",
+  "openinference"
+]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: System :: Monitoring",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14"
+]
+dependencies = []
+
+[project.optional-dependencies]
+gcp = [
+  "google-cloud-trace>=1.11.0",
+  "google-cloud-monitoring>=2.14.0",
+  "google-cloud-logging>=3.8.0",
+  "opentelemetry-exporter-gcp-trace>=1.6.0"
+]
+dev = [
+  "pytest>=7.0.0"
+]
+all = [
+  "google-cloud-trace>=1.11.0",
+  "google-cloud-monitoring>=2.14.0",
+  "google-cloud-logging>=3.8.0",
+  "opentelemetry-exporter-gcp-trace>=1.6.0",
+  "pytest>=7.0.0"
+]
+
+[project.scripts]
+google-openagentops = "google_openagentops.cli:main"
+googleagentops = "google_openagentops.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["google_openagentops*", "GoogleOpenAgentOps*"]
+
+[tool.setuptools.package-data]
+google_openagentops = ["web/*"]
