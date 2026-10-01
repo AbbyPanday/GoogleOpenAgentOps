@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>GoogleOpenAgentOps • Google Cloud Agent Observability</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/logo_icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Navigation Header -->
+    <header class="top-nav">
+      <!-- Left: Brand -->
+      <div class="nav-brand-section">
+        <div class="brand-badge" title="Google Cloud AI Agent Observability">
+          <img src="/logo_icon.png" alt="GoogleOpenAgentOps Logo" class="brand-logo-img" />
+          <span class="brand-title">GoogleOpenAgentOps</span>
+          <span class="brand-version">v1.0.0</span>
+        </div>
+      </div>
+
+      <!-- Center: Session Selector & Active Indicators -->
+      <div class="nav-center-section">
+        <div class="session-picker-wrap">
+          <span class="picker-label">Session:</span>
+          <div class="select-container">
+            <select id="sessionSelect" class="session-select" aria-label="Select Observability Session">
+              <option value="">No Active Sessions</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="status-pills-group">
+          <div class="status-pill pill-solutions" id="solutionsPill" title="Connected Google ADK Agent Solutions">
+            <span class="dot dot-emerald"></span>
+            <span id="solutionPillText" class="pill-text">0 Solutions</span>
+          </div>
+
+          <div class="status-pill pill-live" id="liveStatusPill" title="Real-time Server-Sent Events (SSE) Stream">
+            <span class="dot dot-blue"></span>
+            <span id="liveText" class="pill-text">Live Stream</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Controls -->
+      <div class="nav-actions-section">
+        <!-- Dual Theme Toggle (Sun / Moon) -->
+        <button class="btn-theme-toggle" id="btnThemeToggle" title="Toggle Light / Dark Mode" aria-label="Toggle theme">
+          <span class="theme-icon sun-icon">☀️</span>
+          <span class="theme-icon moon-icon">🌙</span>
+          <span class="theme-label" id="themeLabel">Light</span>
+        </button>
+
+                <button class="action-btn action-primary" id="btnAgentOpsConfig" title="AgentOps & OpenTelemetry Collector Configuration">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+          </svg>
+          <span>AgentOps OTel</span>
+        </button>
+        <button class="action-btn" id="btnRefresh" title="Refresh Telemetry">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          <span>Refresh</span>
+        </button>
+
+        <button class="action-btn action-primary" id="btnExportJson" title="Export standardized OpenTelemetry JSON trace">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>Export OTel</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="main-container" id="mainDashboardView">
+      <!-- GCP Environment Context Status Bar -->
+      <section class="gcp-status-bar" id="gcpContextBanner">
+        <div class="gcp-bar-left">
+          <div class="gcp-badge-pill">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
+            </svg>
+            <span>Google Cloud</span>
+          </div>
+          <span class="gcp-sep">•</span>
+          <span class="gcp-runtime" id="gcpRuntimeBadge">Local / Workstation</span>
+          <span class="gcp-sep">•</span>
+          <span class="gcp-project">Project: <strong id="gcpProjectText">Local Engine</strong></span>
+        </div>
+
+        <div class="gcp-bar-right" id="gcpBannerLinks">
+          <a href="#" target="_blank" id="linkTraceConsole" class="gcp-link-btn hidden">
+            <span>Cloud Trace Console</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+          </a>
+          <a href="#" target="_blank" id="linkLoggingConsole" class="gcp-link-btn hidden">
+            <span>Cloud Logging</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+          </a>
+        </div>
+      </section>
+
+      <!-- 5 Key Metric Cards -->
+      <section class="metrics-grid">
+        <div class="metric-card card-blue" id="cardCost">
+          <div class="card-head">
+            <span class="card-label">Total Running Cost</span>
+            <div class="card-icon-wrap icon-blue">💰</div>
+          </div>
+          <div class="card-val-row">
+            <span class="card-val" id="metricCost">$0.000000</span>
+            <span class="card-unit">USD</span>
+          </div>
+          <div class="card-sub">Google Gemini 3.x • Micro-Cent Precision</div>
+        </div>
+
+        <div class="metric-card card-purple" id="cardTokens">
+          <div class="card-head">
+            <span class="card-label">Token Consumption</span>
+            <div class="card-icon-wrap icon-purple">📊</div>
+          </div>
+          <div class="card-val-row">
+            <span class="card-val" id="metricTokens">0</span>
+            <span class="card-unit">tokens</span>
+          </div>
+          <div class="card-sub">Prompt & Completion Tokens</div>
+        </div>
+
+        <div class="metric-card card-emerald" id="cardSpans">
+          <div class="card-head">
+            <span class="card-label">Total Spans (OTel)</span>
+            <div class="card-icon-wrap icon-emerald">⚡</div>
+          </div>
+          <div class="card-val-row">
+            <span class="card-val" id="metricSpans">0</span>
+            <span class="card-unit">spans</span>
+          </div>
+          <div class="card-sub">Agent, Chain & Tool Spans</div>
+        </div>
+
+        <div class="metric-card card-amber" id="cardHandoffs">
+          <div class="card-head">
+            <span class="card-label">Agent Handoffs</span>
+            <div class="card-icon-wrap icon-amber">🔀</div>
+          </div>
+          <div class="card-val-row">
+            <span class="card-val" id="metricHandoffs">0</span>
+            <span class="card-unit">hops</span>
+          </div>
+          <div class="card-sub">Multi-Agent Swarm Delegations</div>
+        </div>
+
+        <div class="metric-card card-rose" id="cardLatency">
+          <div class="card-head">
+            <span class="card-label">Avg Latency</span>
+            <div class="card-icon-wrap icon-rose">⏱️</div>
+          </div>
+          <div class="card-val-row">
+            <span class="card-val" id="metricLatency">0ms</span>
+          </div>
+          <div class="card-sub">Real-Time Performance Monitor</div>
+        </div>
+      </section>
+
+      <!-- Segmented Navigation Tab Bar -->
+      <div class="tab-bar-container">
+        <nav class="segmented-tabs" role="tablist">
+          <button class="seg-tab active" data-tab="tabStateMachine" role="tab">
+            <span class="seg-icon">🤖</span>
+            <span>Agent State Machine</span>
+          </button>
+          <button class="seg-tab" data-tab="tabWaterfall" role="tab">
+            <span class="seg-icon">🌊</span>
+            <span>OpenInference Waterfall</span>
+          </button>
+          <button class="seg-tab" data-tab="tabSolutions" role="tab">
+            <span class="seg-icon">🤝</span>
+            <span>Multi-Solution ADK</span>
+          </button>
+          <button class="seg-tab" data-tab="tabEconomics" role="tab">
+            <span class="seg-icon">💎</span>
+            <span>Gemini 3.x Economics</span>
+          </button>
+          <button class="seg-tab" data-tab="tabTelemetry" role="tab">
+            <span class="seg-icon">📡</span>
+            <span>Live Telemetry Log</span>
+          </button>
+        </nav>
+      </div>
+
+      <!-- Tab 1: Agent State Machine -->
+      <section class="tab-content active" id="tabStateMachine">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-header-text">
+              <h3>Agent State Machine & Chain of Thought</h3>
+              <p>Visualizes multi-turn state transitions, intermediate reasoning loops, and multi-agent handoffs.</p>
+            </div>
+            <div class="legend-group">
+              <span class="chip chip-idle"><span class="chip-dot"></span> Idle</span>
+              <span class="chip chip-think"><span class="chip-dot"></span> Thinking</span>
+              <span class="chip chip-tool"><span class="chip-dot"></span> Tool Calling</span>
+              <span class="chip chip-done"><span class="chip-dot"></span> Completed</span>
+              <span class="chip chip-fail"><span class="chip-dot"></span> Failed</span>
+            </div>
+          </div>
+
+          <!-- Empty State or Agent Nodes Grid -->
+          <div class="agent-nodes-grid" id="agentNodesGrid"></div>
+
+          <div class="handoffs-section" id="handoffsContainer">
+            <h4>Sequential Multi-Agent Handoff Chain</h4>
+            <div class="handoffs-list" id="handoffsList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 2: Trace Waterfall -->
+      <section class="tab-content" id="tabWaterfall">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-header-text">
+              <h3>OpenInference Trace Waterfall</h3>
+              <p>Click any span row to inspect prompts, chain-of-thought blocks, and Gemini 3.x token math.</p>
+            </div>
+            <div class="wf-filters">
+              <select id="wfKindFilter" class="filter-select" aria-label="Filter span kinds">
+                <option value="ALL">All Span Kinds</option>
+                <option value="AGENT">AGENT</option>
+                <option value="CHAIN">CHAIN</option>
+                <option value="LLM">LLM</option>
+                <option value="TOOL">TOOL</option>
+              </select>
+              <input type="text" id="wfSearch" class="filter-search-input" placeholder="Search spans, tools, or agents...">
+            </div>
+          </div>
+
+          <div class="waterfall-table-wrapper">
+            <div class="wf-table">
+              <div class="wf-thead">
+                <div class="wf-th wf-col-name">Span Name & Kind</div>
+                <div class="wf-th wf-col-timeline">Timeline Waterfall</div>
+                <div class="wf-th wf-col-model">Model</div>
+                <div class="wf-th wf-col-tokens">Tokens</div>
+                <div class="wf-th wf-col-cost">Cost (USD)</div>
+                <div class="wf-th wf-col-dur">Latency</div>
+                <div class="wf-th wf-col-status">Status</div>
+              </div>
+              <div class="wf-tbody" id="waterfallBody"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 3: Multi-Solution ADK -->
+      <section class="tab-content" id="tabSolutions">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-header-text">
+              <h3>Connected Google ADK Agent Solutions</h3>
+              <p>Independent agent microservices, tools, and swarms linked into this central dashboard.</p>
+            </div>
+          </div>
+          <div class="solutions-grid" id="solutionsGrid"></div>
+        </div>
+      </section>
+
+      <!-- Tab 4: Token Economics -->
+      <section class="tab-content" id="tabEconomics">
+        <div class="grid-two-panels">
+          <div class="panel-card">
+            <div class="panel-header-text">
+              <h3>Token Consumption by Agent</h3>
+              <p>Breakdown of prompt and completion token usage per agent node.</p>
+            </div>
+            <div class="token-bars-wrap" id="tokenBarsWrap"></div>
+          </div>
+
+          <div class="panel-card">
+            <div class="panel-header-text">
+              <h3>Active Google Gemini 3.x Pricing</h3>
+              <p>Production rates per official Google Gemini API documentation.</p>
+            </div>
+            <div class="pricing-list" id="pricingList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 5: Live Telemetry Stream -->
+      <section class="tab-content" id="tabTelemetry">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-header-text">
+              <h3>Server-Sent Events (SSE) Telemetry Stream</h3>
+              <p>Live stream of state changes, tool executions, and span telemetry emitted across agents.</p>
+            </div>
+            <div class="tele-chip-bar">
+              <button class="t-chip active" data-filter="ALL">All</button>
+              <button class="t-chip" data-filter="AGENT_HANDOFF">Handoffs</button>
+              <button class="t-chip" data-filter="THOUGHT_RECORDED">Thoughts</button>
+              <button class="t-chip" data-filter="STATE_TRANSITION">States</button>
+              <button class="t-chip" data-filter="TOOL_CALLED">Tools</button>
+              <button class="t-chip" data-filter="SPAN_ENDED">Spans</button>
+            </div>
+          </div>
+          <div class="telemetry-log-stream" id="telemetryLog"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Slide-over Span Inspector Drawer & Backdrop -->
+    <div class="drawer-backdrop hidden" id="inspectorBackdrop"></div>
+    <aside class="inspector-drawer hidden" id="inspectorDrawer" style="display:none;">
+      <div class="drawer-head">
+        <div class="drawer-title-group">
+          <span class="kind-badge" id="inspKind">AGENT</span>
+          <h4 id="inspTitle">Span: Agent</h4>
+        </div>
+        <button class="btn-close-drawer" id="btnCloseDrawer" title="Close Drawer (Esc)">✕</button>
+      </div>
+      <nav class="drawer-tabs">
+        <button class="d-tab active" data-dtab="dOverview">Overview</button>
+        <button class="d-tab" data-dtab="dPrompt">Prompt / Input</button>
+        <button class="d-tab" data-dtab="dThought">Chain of Thought</button>
+        <button class="d-tab" data-dtab="dOutput">Output & Tools</button>
+        <button class="d-tab" data-dtab="dRaw">OTel JSON</button>
+      </nav>
+      <div class="drawer-body">
+        <div class="d-content active" id="dOverview">
+          <div class="meta-grid" id="inspMetaGrid"></div>
+        </div>
+        <div class="d-content" id="dPrompt">
+          <pre class="code-box" id="inspPromptPre"></pre>
+        </div>
+        <div class="d-content" id="dThought">
+          <pre class="thought-box" id="inspThoughtPre"></pre>
+        </div>
+        <div class="d-content" id="dOutput">
+          <pre class="code-box" id="inspOutputPre"></pre>
+          <div id="inspToolsArea"></div>
+        </div>
+        <div class="d-content" id="dRaw">
+          <pre class="code-box" id="inspRawPre"></pre>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Interactive Toast Notification Container -->
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

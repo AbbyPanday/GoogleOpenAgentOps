@@ -1,0 +1,3 @@
+[console_scripts]
+google-openagentops = google_openagentops.cli:main
+googleagentops = google_openagentops.cli:main

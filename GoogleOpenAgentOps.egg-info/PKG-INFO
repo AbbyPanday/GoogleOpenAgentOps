@@ -1,0 +1,120 @@
+Metadata-Version: 2.4
+Name: GoogleOpenAgentOps
+Version: 1.0.0
+Summary: Google Cloud Native & Zero-Cost Observability, Tracing, and Token Economics SDK for Autonomous AI Agents and Multi-Agent Swarms
+Author-email: Abhimanyu Panda <abhimanyu@googleopenagentops.dev>
+License-Expression: MIT
+Keywords: google-cloud,gcp,cloud-trace,cloud-monitoring,cloud-logging,agentops,gemini,gemini-3.8-flash,ai-agents,opentelemetry,openinference
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: System :: Monitoring
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Provides-Extra: gcp
+Requires-Dist: google-cloud-trace>=1.11.0; extra == "gcp"
+Requires-Dist: google-cloud-monitoring>=2.14.0; extra == "gcp"
+Requires-Dist: google-cloud-logging>=3.8.0; extra == "gcp"
+Requires-Dist: opentelemetry-exporter-gcp-trace>=1.6.0; extra == "gcp"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Provides-Extra: all
+Requires-Dist: google-cloud-trace>=1.11.0; extra == "all"
+Requires-Dist: google-cloud-monitoring>=2.14.0; extra == "all"
+Requires-Dist: google-cloud-logging>=3.8.0; extra == "all"
+Requires-Dist: opentelemetry-exporter-gcp-trace>=1.6.0; extra == "all"
+Requires-Dist: pytest>=7.0.0; extra == "all"
+Dynamic: license-file
+
+# GoogleOpenAgentOps (Python SDK)
+
+**GoogleOpenAgentOps** is an enterprise-grade observability, tracing, and token economics SDK designed specifically for **Google Cloud Platform (GCP)** and autonomous AI agents.
+
+It seamlessly integrates with **Google Cloud Trace**, **Google Cloud Monitoring**, and **Google Cloud Logging**, with automatic detection of GCP Console environments (Cloud Run, GKE, Vertex AI, Compute Engine) and Google Gemini API keys.
+
+---
+
+## ⚡ Key Capabilities
+
+* **Google Cloud Console Auto-Adaptation:**
+  * Auto-detects runtime environment: **Google Cloud Run**, **GKE**, **Vertex AI**, **Google Compute Engine (GCE)**, **Cloud Functions**, or **Local Workstation**.
+  * Auto-detects **Google Cloud Project ID** from environment variables (`GOOGLE_CLOUD_PROJECT`, `GCP_PROJECT`) or GCP Compute Metadata Server.
+  * Auto-discovers and synchronizes **`GEMINI_API_KEY`** & **`GOOGLE_API_KEY`** for Google GenAI SDKs.
+  * Direct Google Cloud Console navigation links generated dynamically for Cloud Trace and Cloud Logging.
+* **Google Cloud Operations Suite Integration:**
+  * **Google Cloud Trace (v2):** Exports agent spans formatted as `projects/{project}/traces/{trace}/spans/{span}` with microsecond precision.
+  * **Google Cloud Monitoring (v3):** Custom TimeSeries metrics (`custom.googleapis.com/agentops/tokens`, `cost_usd`, `latency_ms`).
+  * **Google Cloud Logging:** Emits structured JSON logs tagged with `logging.googleapis.com/trace` and `logging.googleapis.com/spanId`. Automatically unlocks the native **"View Trace"** button in Google Cloud Console.
+* **Active Google Gemini 3.x Production Models Only:**
+  * Pre-configured with official Google Gemini active production models: `gemini-3.8-flash`, `gemini-3.8-live`, `gemini-3.5-flash`, `gemini-3-flash`, `gemini-omni-1.1-flash`, `gemini-3.1-flash-image`, `gemini-3-pro-image`. Zero deprecated models.
+* **Local Self-Hosted Mode (Zero Cost & Zero Dependencies):**
+  * Built-in dark-mode glassmorphic dashboard on `http://localhost:8000` with real-time SSE telemetry, agent state machine, waterfall, and token economics.
+* **Standard OpenInference & OpenTelemetry (OTel):**
+  * Native export to standard OTel JSON protobuf format.
+
+---
+
+## 📦 Installation
+
+```bash
+# Standard self-hosted installation (zero external dependencies)
+pip install GoogleOpenAgentOps
+
+# With Google Cloud native SDKs (Cloud Trace, Monitoring, Logging)
+pip install "GoogleOpenAgentOps[gcp]"
+```
+
+---
+
+## 🚀 Quickstart
+
+### 1. Auto-Adapting Google Cloud Agent
+
+```python
+import GoogleOpenAgentOps as agentops
+
+# Auto-detects GCP environment, Project ID, and GEMINI_API_KEY
+session = agentops.init(print_banner=True)
+
+@agentops.track_agent(name="ArchitectAgent", model="gemini-3.8-flash")
+def design_system(task_spec: dict, session_id: str):
+    return {
+        "solution": "Cloud Run Serverless Event Processing",
+        "_thought": "1. Analyze latency requirements.\n2. Recommend Cloud Run."
+    }
+
+@agentops.track_tool(name="verify_quota")
+def verify_quota(service: str):
+    return {"status": "QUOTA_AVAILABLE", "service": service}
+
+if __name__ == "__main__":
+    with agentops.start_trace("cloud-run-session-01", "Production Workflow"):
+        res = design_system({"task": "image_pipeline"}, session_id="cloud-run-session-01")
+        quota = verify_quota("cloud_run")
+```
+
+### 2. Inspecting GCP Context via CLI
+
+```bash
+# Test and inspect auto-detected GCP environment details
+google-openagentops gcp-check
+
+# Launch local dashboard on port 8000
+google-openagentops serve --port 8000
+
+# View active Gemini model pricing
+google-openagentops pricing
+```
+
+---
+
+## ⚖️ License
+MIT License. Free for commercial and open-source use.

@@ -1,0 +1,16 @@
+
+[all]
+google-cloud-trace>=1.11.0
+google-cloud-monitoring>=2.14.0
+google-cloud-logging>=3.8.0
+opentelemetry-exporter-gcp-trace>=1.6.0
+pytest>=7.0.0
+
+[dev]
+pytest>=7.0.0
+
+[gcp]
+google-cloud-trace>=1.11.0
+google-cloud-monitoring>=2.14.0
+google-cloud-logging>=3.8.0
+opentelemetry-exporter-gcp-trace>=1.6.0
