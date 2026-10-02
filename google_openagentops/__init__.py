@@ -21,7 +21,9 @@ from google_openagentops.models import (
     Handoff,
     StateTransition,
     TokenMetrics,
-    ToolCallRecord
+    ToolCallRecord,
+    ReplayEvent,
+    CiCdEvent
 )
 from google_openagentops.pricing import (
     MODEL_PRICING,
@@ -30,6 +32,13 @@ from google_openagentops.pricing import (
 )
 from google_openagentops.tracker import GoogleOpenAgentOpsTracker, tracker
 from google_openagentops.decorators import (
+    session,
+    agent,
+    operation,
+    tool,
+    workflow,
+    guardrail,
+    session_scope,
     track_agent,
     track_tool,
     start_trace,
@@ -102,9 +111,18 @@ __all__ = [
     "StateTransition",
     "TokenMetrics",
     "ToolCallRecord",
+    "ReplayEvent",
+    "CiCdEvent",
     "MODEL_PRICING",
     "calculate_token_cost",
     "estimate_token_count",
+    "session",
+    "agent",
+    "operation",
+    "tool",
+    "workflow",
+    "guardrail",
+    "session_scope",
     "track_agent",
     "track_tool",
     "start_trace",

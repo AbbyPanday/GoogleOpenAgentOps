@@ -8,7 +8,13 @@ const state = {
   telemetryFilter: "ALL",
   eventSource: null,
   telemetryLogs: [],
-  solutions: []
+  solutions: [],
+  replayEvents: [],
+  replayIndex: 0,
+  replayPlaying: false,
+  replayTimer: null,
+  replaySpeed: 1,
+  cicdEvents: []
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -18,6 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadSolutions();
   loadSessions();
   loadPricingRegistry();
+  loadCicdEvents();
   initLiveStream();
 });
 
@@ -68,6 +75,7 @@ function setupEventListeners() {
     if (sid) {
       state.currentSessionId = sid;
       loadSessionDetails(sid);
+      loadReplayEvents(sid);
     }
   });
 
@@ -79,6 +87,8 @@ function setupEventListeners() {
     loadContext();
     loadSolutions();
     loadSessions();
+    loadCicdEvents();
+    if (state.currentSessionId) loadReplayEvents(state.currentSessionId);
     showToast("Telemetry Refreshed");
   });
 
@@ -91,8 +101,6 @@ function setupEventListeners() {
     }
   });
 
-
-
   // Segmented Tabs
   document.querySelectorAll(".seg-tab").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -101,8 +109,38 @@ function setupEventListeners() {
       btn.classList.add("active");
       const targetId = btn.dataset.tab;
       document.getElementById(targetId)?.classList.add("active");
+
+      if (targetId === "tabReplay" && state.currentSessionId) {
+        loadReplayEvents(state.currentSessionId);
+      } else if (targetId === "tabCicd") {
+        loadCicdEvents();
+      }
     });
   });
+
+  // Replay Player Controls
+  document.getElementById("btnReplayPlay")?.addEventListener("click", () => toggleReplayPlay());
+  document.getElementById("btnReplayPrev")?.addEventListener("click", () => stepReplay(-1));
+  document.getElementById("btnReplayNext")?.addEventListener("click", () => stepReplay(1));
+  document.getElementById("replaySlider")?.addEventListener("input", (e) => {
+    pauseReplay();
+    seekReplay(parseInt(e.target.value, 10));
+  });
+
+  document.querySelectorAll(".speed-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".speed-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.replaySpeed = parseFloat(btn.dataset.speed) || 1;
+      if (state.replayPlaying) {
+        pauseReplay();
+        startReplay();
+      }
+    });
+  });
+
+  // CI/CD Actions
+  document.getElementById("btnRecordSampleDeploy")?.addEventListener("click", () => recordSampleDeploy());
 
   // Waterfall Filter & Search
   document.getElementById("wfKindFilter")?.addEventListener("change", (e) => {
@@ -130,6 +168,7 @@ function setupEventListeners() {
   const backdrop = document.getElementById("inspectorBackdrop");
   btnCloseDrawer?.addEventListener("click", () => closeDrawer());
   backdrop?.addEventListener("click", () => closeDrawer());
+  document.getElementById("sheetDragHandle")?.addEventListener("click", () => closeDrawer());
 
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeDrawer();
@@ -568,6 +607,17 @@ function initLiveStream() {
 
   const liveText = document.getElementById("liveText");
 
+  // Continuous auto-sync poller (2.5s)
+  if (!state.pollInterval) {
+    state.pollInterval = setInterval(() => {
+      loadSessions();
+      loadCicdEvents();
+      if (state.currentSessionId) {
+        loadSessionDetails(state.currentSessionId);
+      }
+    }, 2500);
+  }
+
   try {
     state.eventSource = new EventSource("/api/agentops/stream");
 
@@ -583,10 +633,11 @@ function initLiveStream() {
     };
 
     state.eventSource.onerror = () => {
-      if (liveText) liveText.textContent = "Reconnecting...";
+      if (liveText) liveText.textContent = "Live Polling (2.5s)";
     };
   } catch (e) {
     console.warn("SSE stream error:", e);
+    if (liveText) liveText.textContent = "Live Polling (2.5s)";
   }
 }
 
@@ -649,4 +700,261 @@ function formatTelemetrySnippet(data) {
   if (data.name) return `Span: ${data.name} [${data.durationMs || 0}ms] Model: ${data.model || ''}`;
   if (data.sessionId) return `Session ID: <code>${data.sessionId}</code>`;
   return JSON.stringify(data).slice(0, 120);
+}
+
+/* ==========================================================================
+   6. Session Replay Controller (AgentOps Parity)
+   ========================================================================== */
+async function loadReplayEvents(sessionId) {
+  if (!sessionId) return;
+  try {
+    const res = await fetch(`/api/agentops/session/${sessionId}/replay`);
+    if (!res.ok) return;
+    const data = await res.json();
+    state.replayEvents = data.events || [];
+    state.replayIndex = 0;
+
+    const slider = document.getElementById("replaySlider");
+    const totalEl = document.getElementById("replayStepTotal");
+    const numEl = document.getElementById("replayStepNum");
+
+    const maxIdx = Math.max(0, state.replayEvents.length - 1);
+    if (slider) {
+      slider.max = maxIdx.toString();
+      slider.value = "0";
+    }
+    if (totalEl) totalEl.textContent = state.replayEvents.length.toString();
+    if (numEl) numEl.textContent = state.replayEvents.length > 0 ? "1" : "0";
+
+    renderReplayTimeline();
+    if (state.replayEvents.length > 0) {
+      renderReplayStep(0);
+    }
+  } catch (e) {
+    console.warn("Replay fetch error:", e);
+  }
+}
+
+function renderReplayTimeline() {
+  const container = document.getElementById("replayEventsList");
+  if (!container) return;
+
+  if (state.replayEvents.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🎬</div>
+        <p>No replay events recorded for this session yet.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = state.replayEvents.map((ev, idx) => {
+    const timeStr = new Date(ev.timestamp * 1000).toLocaleTimeString();
+    const isAct = idx === state.replayIndex;
+    const kind = ev.event_type || "EVENT";
+    let badgeClass = "rep-badge-agent";
+    if (kind.includes("TOOL")) badgeClass = "rep-badge-tool";
+    else if (kind.includes("THOUGHT")) badgeClass = "rep-badge-thought";
+    else if (kind.includes("HANDOFF")) badgeClass = "rep-badge-handoff";
+    else if (kind.includes("GUARDRAIL")) badgeClass = "rep-badge-guardrail";
+
+    return `
+      <div class="replay-event-row ${isAct ? 'active' : ''}" data-idx="${idx}">
+        <span class="rep-step-num">#${idx + 1}</span>
+        <span class="rep-badge ${badgeClass}">${kind}</span>
+        <div class="rep-text-col">
+          <div class="rep-title">${ev.title || ev.event_type}</div>
+          <div class="rep-sub">${ev.agent_name ? '🤖 ' + ev.agent_name + ' • ' : ''}${ev.description || ''}</div>
+        </div>
+        <span class="rep-time">${timeStr}</span>
+      </div>
+    `;
+  }).join("");
+
+  container.querySelectorAll(".replay-event-row").forEach(row => {
+    row.addEventListener("click", () => {
+      pauseReplay();
+      const idx = parseInt(row.dataset.idx, 10);
+      seekReplay(idx);
+    });
+  });
+}
+
+function renderReplayStep(idx) {
+  state.replayIndex = idx;
+  const slider = document.getElementById("replaySlider");
+  const numEl = document.getElementById("replayStepNum");
+  if (slider) slider.value = idx.toString();
+  if (numEl) numEl.textContent = (idx + 1).toString();
+
+  document.querySelectorAll(".replay-event-row").forEach((r, i) => {
+    if (i === idx) {
+      r.classList.add("active");
+      r.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } else {
+      r.classList.remove("active");
+    }
+  });
+
+  const card = document.getElementById("replaySnapshotCard");
+  if (!card) return;
+  const ev = state.replayEvents[idx];
+  if (!ev) {
+    card.innerHTML = '<div class="empty-state"><p>No event data</p></div>';
+    return;
+  }
+
+  const kind = ev.event_type || "EVENT";
+  const payloadStr = JSON.stringify(ev.payload || {}, null, 2);
+
+  card.innerHTML = `
+    <div class="snapshot-header">
+      <span class="kind-badge">${kind}</span>
+      <h4 style="margin:0;font-size:1.05rem;color:var(--text-heading);">${ev.title || kind}</h4>
+      <span style="font-size:0.75rem;color:var(--text-muted);margin-left:auto;">${ev.iso_timestamp || ''}</span>
+    </div>
+    <div class="snapshot-meta-row">
+      <div>Agent: <strong>${ev.agent_name || 'Workflow'}</strong></div>
+      <div>Description: <span style="color:var(--text-body);">${ev.description || 'N/A'}</span></div>
+    </div>
+    <div class="snapshot-body">
+      <div style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">Event Payload & Execution Context:</div>
+      <pre class="code-box" style="max-height:280px;overflow:auto;">${payloadStr}</pre>
+    </div>
+  `;
+}
+
+function toggleReplayPlay() {
+  if (state.replayPlaying) {
+    pauseReplay();
+  } else {
+    startReplay();
+  }
+}
+
+function startReplay() {
+  if (state.replayEvents.length === 0) return;
+  state.replayPlaying = true;
+  const btn = document.getElementById("btnReplayPlay");
+  if (btn) btn.textContent = "⏸ Pause";
+
+  const delay = Math.max(250, 1000 / (state.replaySpeed || 1));
+  state.replayTimer = setInterval(() => {
+    if (state.replayIndex < state.replayEvents.length - 1) {
+      renderReplayStep(state.replayIndex + 1);
+    } else {
+      pauseReplay();
+    }
+  }, delay);
+}
+
+function pauseReplay() {
+  state.replayPlaying = false;
+  if (state.replayTimer) {
+    clearInterval(state.replayTimer);
+    state.replayTimer = null;
+  }
+  const btn = document.getElementById("btnReplayPlay");
+  if (btn) btn.textContent = "▶ Play";
+}
+
+function stepReplay(delta) {
+  pauseReplay();
+  const nextIdx = Math.max(0, Math.min(state.replayEvents.length - 1, state.replayIndex + delta));
+  seekReplay(nextIdx);
+}
+
+function seekReplay(index) {
+  if (index >= 0 && index < state.replayEvents.length) {
+    renderReplayStep(index);
+  }
+}
+
+/* ==========================================================================
+   7. CI/CD Pipeline & Cloud Run Deployments Controller
+   ========================================================================== */
+async function loadCicdEvents() {
+  try {
+    const res = await fetch("/api/agentops/cicd");
+    if (!res.ok) return;
+    const data = await res.json();
+    state.cicdEvents = data.events || [];
+    renderCicd();
+  } catch (e) {
+    console.warn("CI/CD fetch error:", e);
+  }
+}
+
+function renderCicd() {
+  const totalEl = document.getElementById("cicdTotal");
+  const succEl = document.getElementById("cicdSuccess");
+  const failEl = document.getElementById("cicdFailed");
+  const provEl = document.getElementById("cicdProvider");
+  const tbody = document.getElementById("cicdTableBody");
+
+  const total = state.cicdEvents.length;
+  const passing = state.cicdEvents.filter(e => e.status === "SUCCESS").length;
+  const failed = state.cicdEvents.filter(e => e.status === "FAILURE").length;
+
+  if (totalEl) totalEl.textContent = total.toString();
+  if (succEl) succEl.textContent = passing.toString();
+  if (failEl) failEl.textContent = failed.toString();
+
+  if (tbody) {
+    if (total === 0) {
+      tbody.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🚀</div>
+          <p>No CI/CD pipeline events logged yet. Connect GitHub Actions or Cloud Build to view pipeline traces.</p>
+        </div>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = state.cicdEvents.map(e => `
+      <div class="cicd-tr">
+        <div class="cicd-td"><strong>${e.pipeline_name}</strong> <span class="cicd-prov-tag">${e.provider}</span></div>
+        <div class="cicd-td"><code>${e.run_id}</code></div>
+        <div class="cicd-td"><code>${e.branch}</code> • <span style="font-family:monospace;font-size:0.75rem;">${(e.commit_sha || '').slice(0, 7)}</span></div>
+        <div class="cicd-td"><span class="badge-env">${e.environment}</span></div>
+        <div class="cicd-td">${e.duration_ms}ms</div>
+        <div class="cicd-td">
+          <span class="badge-status badge-${(e.status || 'SUCCESS').toLowerCase()}">${e.status}</span>
+        </div>
+        <div class="cicd-td" style="color:var(--text-muted);font-size:0.75rem;">${e.iso_timestamp ? new Date(e.iso_timestamp).toLocaleTimeString() : 'N/A'}</div>
+      </div>
+    `).join("");
+  }
+}
+
+async function recordSampleDeploy() {
+  try {
+    const payload = {
+      pipeline_name: "Google Cloud Build • ADK Swarm Release",
+      run_id: "build-" + Math.floor(1000 + Math.random() * 9000),
+      commit_sha: "a1b2c3d" + Math.floor(100 + Math.random() * 900),
+      branch: "main",
+      status: "SUCCESS",
+      duration_ms: Math.floor(1800 + Math.random() * 2500),
+      environment: "production",
+      provider: "cloud-build",
+      details: {
+        target: "Cloud Run Service: google-openagentops-server",
+        region: "us-central1",
+        container: "gcr.io/google-adk-observatory/agentops:v2.0.0"
+      }
+    };
+    const res = await fetch("/api/agentops/cicd", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      showToast("Deployment event recorded successfully!");
+      loadCicdEvents();
+    }
+  } catch (e) {
+    showToast("Failed to record deploy event");
+  }
 }

@@ -62,17 +62,18 @@
 
 Whether you run a single autonomous agent on your local machine, multi-agent swarms across Kubernetes/GKE, or distributed microservices on **Google Cloud Run**, GoogleOpenAgentOps unifies all execution traces, tool latencies, agent state machines, and token economics into one central live dashboard with **deep GCP Console linking**.
 
-### ⚡ Highlights & Capabilities
+### ⚡ Highlights & Capabilities (v2.0)
 
 | Feature | Description |
 | :--- | :--- |
+| 🎯 **AgentOps Parity Decorators** | `@session`, `@agent`, `@operation`, `@tool`, `@workflow`, `@guardrail` with 100% sync & async support |
+| 🎬 **Interactive Session Replay** | Deterministic step-by-step timeline scrub, prompt inspections, thought loops, and tool parameters |
+| 🚀 **CI/CD Pipeline Telemetry** | Build status, container releases, and commit traces from GitHub Actions and Google Cloud Build |
 | 📊 **Real-time State Machine** | Live visualization of agent lifecycle transitions (`IDLE` ➔ `INITIALIZING` ➔ `THINKING` ➔ `TOOL_CALLING` ➔ `COMPLETED` / `FAILED`) |
 | 💸 **Active Gemini 3.x Economics** | Exact cost calculation for `gemini-3.8-flash`, `gemini-3.5-flash`, and `gemini-3.8-live` foundation models |
-| 🤝 **Multi-Solution ADK Linking** | Seamlessly connect multiple independent ADK agent applications (e.g. Support Bot + Financial Auditor) into one central dashboard |
-| ☁️ **GCP Auto-Adaptation** | Auto-detects Cloud Run, GKE, Vertex AI, GCE, project IDs, and ADC credentials; auto-exports to Cloud Trace, Cloud Monitoring, and Cloud Logging |
-| 🚀 **1-Click Cloud Run Deployer** | Automated SSH script and Python CLI that enables required GCP APIs, packages Docker containers, configures compute runtimes, and outputs a live HTTPS URL |
-| 🧠 **Jev (Typesafe AI) Routing** | Built-in discrete decision engine for autonomous agent skill activation and dynamic model routing |
-| 🔗 **OpenInference / OTel Compliant** | Export traces directly in OpenInference and OpenTelemetry standard formats for cross-compatibility |
+| 🤝 **Multi-Solution ADK Linking** | Seamlessly connect multiple independent ADK agent applications into one central dashboard |
+| ☁️ **GCP Auto-Adaptation** | Auto-detects Cloud Run, GKE, Vertex AI, GCE, project IDs, and ADC credentials; exports to Cloud Trace, Monitoring, and Logging |
+| 🔗 **OpenInference & OTel Native** | Spans, tokens, and trace context natively formatted according to OpenInference semantic conventions |
 
 ---
 
@@ -83,13 +84,13 @@ Whether you run a single autonomous agent on your local machine, multi-agent swa
 | Framework | Status | Supported Features |
 | :--- | :---: | :--- |
 | **Google ADK (Agent Development Kit)** | 🟢 Native | Multi-solution registration, agent decorators, tool spans, handoffs |
+| **AgentOps Parity API** | 🟢 Native | `@session`, `@agent`, `@operation`, `@tool`, `@workflow`, `@guardrail` |
 | **Google Gemini 3.x API** | 🟢 Native | `gemini-3.8-flash`, `gemini-3.5-flash`, `gemini-3.8-live` pricing & tokens |
-| **Google Cloud Run** | 🟢 Native | 1-Click source build & deploy, auto-scaling, container runtime |
+| **Google Cloud Run & Cloud Build** | 🟢 Native | CI/CD build telemetry, 1-click deploy, container runtime auto-detection |
 | **Google Cloud Trace & Logging** | 🟢 Native | Cloud Trace v2 exporter, `logging.googleapis.com/trace` log correlation |
 | **LangChain & LangGraph** | 🟢 Native | Agent execution tracing, tool run timing, nested graph waterfalls |
 | **CrewAI** | 🟢 Native | Hierarchical agent handoffs, crew task execution, agent roles |
 | **AG2 (AutoGen)** | 🟢 Native | Multi-turn conversational group chats, agent handoffs, tool feedback |
-| **Vertex AI Reasoning Engines** | 🟢 Native | Cloud-hosted reasoning engines, managed agent evaluation |
 
 </div>
 
@@ -102,43 +103,52 @@ Whether you run a single autonomous agent on your local machine, multi-agent swa
 Install directly via `pip` from PyPI or GitHub:
 
 ```bash
-# Install via PyPI
+# Core install
 pip install GoogleOpenAgentOps
 
-# Or install directly from GitHub (Always latest main branch)
-pip install git+https://github.com/abhimanyu/GoogleOpenAgentOps.git
+# With Google Cloud and OpenTelemetry exporters
+pip install "GoogleOpenAgentOps[all]"
 ```
 
-To include optional Google Cloud client libraries:
-```bash
-pip install "GoogleOpenAgentOps[gcp]"
-```
-
-### 2. Session Observability in 2 Lines
-
-Add observability to any Python agent workflow:
+### 2. Complete AgentOps Workflow in Python
 
 ```python
 import google_openagentops as agentops
 
-# 1. Initialize GoogleOpenAgentOps (Auto-adapts to your GCP project or GEMINI_API_KEY)
-agentops.init()
+# Initialize (auto-discovers GCP Project or GEMINI_API_KEY)
+session = agentops.init(project_id="my-adk-project")
 
-# 2. Instrument your agent function with a decorator
-@agentops.track_agent(name="ResearchAgent", model="gemini-3.8-flash")
-def analyze_topic(query: str):
-    # Your agent code here
-    return {"summary": f"Insights on {query}", "_thought": "Identified key market trends"}
+# 1. Tool Decorator
+@agentops.tool(name="database_query")
+def fetch_user_data(user_id: str):
+    return {"user_id": user_id, "tier": "enterprise"}
 
-# Execute your agent
-result = analyze_topic("Quantum Computing in Finance")
-print(result)
+# 2. Guardrail Decorator
+@agentops.guardrail(name="SecurityGuardrail")
+def check_safety(output: dict) -> bool:
+    return "password" not in str(output)
+
+# 3. Agent Decorator
+@agentops.agent(name="CustomerSupportAgent", role="AI Assistant", model="gemini-3.8-flash")
+def handle_support(user_id: str):
+    data = fetch_user_data(user_id)
+    response = {"message": f"Hello {data['user_id']}, you are on {data['tier']} tier."}
+    check_safety(response)
+    return response
+
+# 4. Top-level Session / Workflow
+@agentops.session(session_name="Enterprise Customer Session")
+def run():
+    return handle_support("usr-8492")
+
+run()
 ```
 
 Launch the local visual dashboard:
 ```bash
 google-openagentops serve --port 8000
 ```
+
 Open [http://localhost:8000](http://localhost:8000) to view live state transitions, trace spans, and token spending!
 
 ---

@@ -185,17 +185,25 @@
             <span class="seg-icon">🌊</span>
             <span>OpenInference Waterfall</span>
           </button>
-          <button class="seg-tab" data-tab="tabSolutions" role="tab">
-            <span class="seg-icon">🤝</span>
-            <span>Multi-Solution ADK</span>
+          <button class="seg-tab" data-tab="tabReplay" role="tab">
+            <span class="seg-icon">▶️</span>
+            <span>Session Replay</span>
           </button>
           <button class="seg-tab" data-tab="tabEconomics" role="tab">
             <span class="seg-icon">💎</span>
             <span>Gemini 3.x Economics</span>
           </button>
+          <button class="seg-tab" data-tab="tabCicd" role="tab">
+            <span class="seg-icon">🚀</span>
+            <span>CI/CD & Deployments</span>
+          </button>
           <button class="seg-tab" data-tab="tabTelemetry" role="tab">
             <span class="seg-icon">📡</span>
             <span>Live Telemetry Log</span>
+          </button>
+          <button class="seg-tab" data-tab="tabSolutions" role="tab">
+            <span class="seg-icon">🤝</span>
+            <span>ADK Solutions</span>
           </button>
         </nav>
       </div>
@@ -264,6 +272,54 @@
         </div>
       </section>
 
+      <!-- Tab: Session Replay (AgentOps Parity) -->
+      <section class="tab-content" id="tabReplay">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-header-text">
+              <h3>Agent Session Replay & Execution Timeline</h3>
+              <p>Step-by-step deterministic playback of agent reasoning loops, tool calls, guardrails, and handoffs.</p>
+            </div>
+            <div class="replay-controls" id="replayControls">
+              <button class="btn-ctrl" id="btnReplayPrev" title="Previous Step">⏮</button>
+              <button class="btn-ctrl btn-play" id="btnReplayPlay" title="Play / Pause">▶ Play</button>
+              <button class="btn-ctrl" id="btnReplayNext" title="Next Step">⏭</button>
+              <span class="replay-counter"><span id="replayStepNum">0</span> / <span id="replayStepTotal">0</span></span>
+              <div class="speed-toggle">
+                <button class="speed-btn active" data-speed="1">1x</button>
+                <button class="speed-btn" data-speed="2">2x</button>
+                <button class="speed-btn" data-speed="4">4x</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="replay-timeline-slider-bar">
+            <input type="range" id="replaySlider" min="0" max="0" value="0" class="replay-slider" aria-label="Session Replay Timeline Scrub">
+          </div>
+
+          <div class="replay-stage-grid">
+            <div class="replay-events-pane">
+              <h4>Chronological Event Sequence</h4>
+              <div class="replay-events-list" id="replayEventsList">
+                <div class="empty-state">
+                  <div class="empty-icon">🎬</div>
+                  <p>Select an active session to load its event replay stream.</p>
+                </div>
+              </div>
+            </div>
+            <div class="replay-inspector-pane">
+              <h4>Active Step Snapshot</h4>
+              <div class="replay-snapshot-card" id="replaySnapshotCard">
+                <div class="empty-state">
+                  <div class="empty-icon">🔍</div>
+                  <p>Play or scrub the timeline to inspect active step execution state.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Tab 3: Multi-Solution ADK -->
       <section class="tab-content" id="tabSolutions">
         <div class="panel-card">
@@ -298,6 +354,60 @@
         </div>
       </section>
 
+      <!-- Tab: CI/CD & Deployments -->
+      <section class="tab-content" id="tabCicd">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-header-text">
+              <h3>CI/CD Pipelines & Cloud Run Deployment Traces</h3>
+              <p>Tracks build status, commit shas, automated test gates, and production container releases.</p>
+            </div>
+            <div class="cicd-actions">
+              <button class="btn-ctrl" id="btnRecordSampleDeploy" title="Record deployment marker">+ Record Deploy Event</button>
+            </div>
+          </div>
+
+          <div class="cicd-summary-strip">
+            <div class="cicd-stat-box">
+              <span class="cicd-stat-val" id="cicdTotal">0</span>
+              <span class="cicd-stat-lbl">Total Runs</span>
+            </div>
+            <div class="cicd-stat-box">
+              <span class="cicd-stat-val text-emerald" id="cicdSuccess">0</span>
+              <span class="cicd-stat-lbl">Passing</span>
+            </div>
+            <div class="cicd-stat-box">
+              <span class="cicd-stat-val text-rose" id="cicdFailed">0</span>
+              <span class="cicd-stat-lbl">Failed</span>
+            </div>
+            <div class="cicd-stat-box">
+              <span class="cicd-stat-val" id="cicdProvider">Cloud Build / GitHub</span>
+              <span class="cicd-stat-lbl">Active Providers</span>
+            </div>
+          </div>
+
+          <div class="cicd-table-wrapper">
+            <div class="cicd-table" id="cicdTable">
+              <div class="cicd-thead">
+                <div class="cicd-th">Pipeline / Provider</div>
+                <div class="cicd-th">Run ID</div>
+                <div class="cicd-th">Branch & Commit</div>
+                <div class="cicd-th">Environment</div>
+                <div class="cicd-th">Duration</div>
+                <div class="cicd-th">Status</div>
+                <div class="cicd-th">Timestamp</div>
+              </div>
+              <div class="cicd-tbody" id="cicdTableBody">
+                <div class="empty-state">
+                  <div class="empty-icon">🚀</div>
+                  <p>No deployment events logged yet. Connect GitHub Actions or Cloud Build to view pipeline traces.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Tab 5: Live Telemetry Stream -->
       <section class="tab-content" id="tabTelemetry">
         <div class="panel-card">
@@ -320,9 +430,10 @@
       </section>
     </main>
 
-    <!-- Slide-over Span Inspector Drawer & Backdrop -->
+    <!-- Slide-over Span Inspector Drawer & Backdrop (Adapts to Bottom Sheet on Mobile) -->
     <div class="drawer-backdrop hidden" id="inspectorBackdrop"></div>
     <aside class="inspector-drawer hidden" id="inspectorDrawer" style="display:none;">
+      <div class="sheet-drag-handle" id="sheetDragHandle"></div>
       <div class="drawer-head">
         <div class="drawer-title-group">
           <span class="kind-badge" id="inspKind">AGENT</span>

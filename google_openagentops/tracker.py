@@ -17,7 +17,9 @@ import uuid
 
 from google_openagentops.models import (
     AgentState,
+    CiCdEvent,
     Handoff,
+    ReplayEvent,
     Session,
     Span,
     SpanKind,
@@ -50,6 +52,7 @@ class GoogleOpenAgentOpsTracker:
         self.sessions: Dict[str, Session] = {}
         self.active_traces: Dict[str, Trace] = {}
         self.solutions: Dict[str, Dict[str, Any]] = {}
+        self.cicd_events: List[CiCdEvent] = []
         self.active_session_id: Optional[str] = None
         self.remote_server_url: Optional[str] = os.getenv("GOOGLE_OPENAGENTOPS_SERVER_URL")
         self.subscribers: List[Callable[[Dict[str, Any]], None]] = []
@@ -80,18 +83,23 @@ class GoogleOpenAgentOpsTracker:
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
         tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Create and activate a new session, returning session ID."""
+        metadata: Optional[Dict[str, Any]] = None,
+        session_name: Optional[str] = None
+    ) -> Session:
+        """Create and activate a new session, returning the Session object."""
         meta = metadata or {}
         if user_id:
             meta["user_id"] = user_id
         if tags:
             meta["tags"] = tags
+        if session_name:
+            meta["session_name"] = session_name
         sess = self.get_or_create_session(session_id, meta)
+        if session_name:
+            sess.session_name = session_name
         with self._telemetry_lock:
             self.active_session_id = sess.session_id
-        return sess.session_id
+        return sess
 
     def get_active_session_id(self) -> str:
         """Retrieve currently active session ID or initialize one."""
@@ -108,6 +116,7 @@ class GoogleOpenAgentOpsTracker:
             return
         sess = self.get_session(target_id)
         if sess:
+            sess.status = status
             sess.metadata["session_status"] = status
             sess.metadata["ended_at"] = time.time()
             self._emit_telemetry("SESSION_ENDED", {
@@ -486,6 +495,150 @@ class GoogleOpenAgentOpsTracker:
         )
         self._emit_telemetry("HANDOFF", {"sessionId": session_id, "handoff": handoff.to_dict()})
         return handoff
+
+    def record_guardrail(
+        self,
+        session_id: str,
+        name: str,
+        passed: bool,
+        input_data: Any = None,
+        output_data: Any = None,
+        agent_name: Optional[str] = None,
+        score: Optional[float] = None,
+        reason: Optional[str] = None
+    ) -> Span:
+        """Record an explicit Guardrail evaluation span adhering to OpenInference."""
+        span = self.start_span(
+            session_id=session_id,
+            name=f"Guardrail: {name}",
+            span_kind=SpanKind.GUARDRAIL.value,
+            agent_name=agent_name,
+            input_data=input_data,
+            attributes={
+                "openinference.span.kind": "GUARDRAIL",
+                "guardrail.name": name,
+                "guardrail.passed": passed,
+                "guardrail.score": score,
+                "guardrail.reason": reason
+            }
+        )
+        self.end_span(
+            span_id=span.span_id,
+            output_data=output_data,
+            error=None if passed else (reason or "Guardrail violation")
+        )
+        self.record_replay_event(
+            session_id=session_id,
+            event_type="GUARDRAIL",
+            title=f"Guardrail: {name} [{'PASSED' if passed else 'BLOCKED'}]",
+            description=reason or ("Check satisfied" if passed else "Validation failed"),
+            agent_name=agent_name,
+            span_id=span.span_id,
+            payload={"passed": passed, "score": score, "reason": reason}
+        )
+        return span
+
+    def record_replay_event(
+        self,
+        session_id: str,
+        event_type: str,
+        title: str,
+        description: str = "",
+        agent_name: Optional[str] = None,
+        span_id: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None
+    ) -> ReplayEvent:
+        """Record an explicit event for chronological session replay."""
+        now = time.time()
+        iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+        event = ReplayEvent(
+            event_id=f"rep-{uuid.uuid4().hex[:8]}",
+            session_id=session_id,
+            timestamp=now,
+            iso_timestamp=iso,
+            event_type=event_type,
+            agent_name=agent_name,
+            span_id=span_id,
+            title=title,
+            description=description,
+            payload=payload or {}
+        )
+        with self._telemetry_lock:
+            session = self.get_or_create_session(session_id)
+            session.replay_events.append(event)
+        self._emit_telemetry("REPLAY_EVENT", {"sessionId": session_id, "event": event.to_dict()})
+        return event
+
+    def get_session_replay(self, session_id: str) -> List[Dict[str, Any]]:
+        """Return chronological list of events for the session replay player."""
+        with self._telemetry_lock:
+            session = self.sessions.get(session_id)
+            if not session:
+                return []
+            return session.build_replay_events()
+
+    def record_cicd_event(
+        self,
+        pipeline_name: str,
+        run_id: str,
+        commit_sha: str = "HEAD",
+        branch: str = "main",
+        status: str = "SUCCESS",
+        duration_ms: int = 0,
+        environment: str = "production",
+        provider: str = "github-actions",
+        details: Optional[Dict[str, Any]] = None
+    ) -> CiCdEvent:
+        """Record a CI/CD build, test, or deployment event."""
+        now = time.time()
+        iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+        event = CiCdEvent(
+            event_id=f"cicd-{uuid.uuid4().hex[:8]}",
+            timestamp=now,
+            iso_timestamp=iso,
+            pipeline_name=pipeline_name,
+            run_id=run_id,
+            commit_sha=commit_sha,
+            branch=branch,
+            status=status,
+            duration_ms=duration_ms,
+            environment=environment,
+            provider=provider,
+            details=details or {}
+        )
+        with self._telemetry_lock:
+            self.cicd_events.insert(0, event)
+            if len(self.cicd_events) > 100:
+                self.cicd_events.pop()
+        self._emit_telemetry("CICD_EVENT", {"event": event.to_dict()})
+        return event
+
+    def get_cicd_events(self) -> List[Dict[str, Any]]:
+        """Return all recorded CI/CD pipeline and deployment events."""
+        with self._telemetry_lock:
+            return [evt.to_dict() for evt in self.cicd_events]
+
+    def get_aggregated_metrics(self) -> Dict[str, Any]:
+        """Calculate cross-session operational metrics."""
+        with self._telemetry_lock:
+            total_sessions = len(self.sessions)
+            total_spans = sum(len(s.spans) for s in self.sessions.values())
+            total_tokens = sum(s.metrics.total_tokens for s in self.sessions.values())
+            total_cost = sum(s.metrics.total_cost_usd for s in self.sessions.values())
+            total_errors = sum(s.metrics.error_count for s in self.sessions.values())
+            latencies = [s.metrics.avg_latency_ms for s in self.sessions.values() if s.metrics.avg_latency_ms > 0]
+            avg_latency = int(sum(latencies) / len(latencies)) if latencies else 0
+
+            return {
+                "total_sessions": total_sessions,
+                "total_spans": total_spans,
+                "total_tokens": total_tokens,
+                "total_cost_usd": total_cost,
+                "total_errors": total_errors,
+                "avg_latency_ms": avg_latency,
+                "error_rate": round(total_errors / max(total_spans, 1) * 100, 2),
+                "active_session_id": self.active_session_id
+            }
 
     def add_subscriber(self, callback: Callable[[Dict[str, Any]], None]):
         with self._telemetry_lock:

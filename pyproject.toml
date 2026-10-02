@@ -41,6 +41,11 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
+otel = [
+  "opentelemetry-api>=1.27.0",
+  "opentelemetry-sdk>=1.27.0",
+  "openinference-semantic-conventions>=0.1.12"
+]
 gcp = [
   "google-cloud-trace>=1.11.0",
   "google-cloud-monitoring>=2.14.0",
@@ -51,6 +56,9 @@ dev = [
   "pytest>=7.0.0"
 ]
 all = [
+  "opentelemetry-api>=1.27.0",
+  "opentelemetry-sdk>=1.27.0",
+  "openinference-semantic-conventions>=0.1.12",
   "google-cloud-trace>=1.11.0",
   "google-cloud-monitoring>=2.14.0",
   "google-cloud-logging>=3.8.0",

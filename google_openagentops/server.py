@@ -19,6 +19,24 @@ from google_openagentops.context import active_context
 
 WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 
+_sse_subscribers = []
+_sse_lock = threading.Lock()
+
+
+def broadcast_event(event_dict: dict):
+    """Broadcast an event payload to all connected SSE clients."""
+    with _sse_lock:
+        dead = []
+        for q in _sse_subscribers:
+            try:
+                q.put_nowait(event_dict)
+            except Exception:
+                dead.append(q)
+        for d in dead:
+            if d in _sse_subscribers:
+                _sse_subscribers.remove(d)
+
+
 
 class GoogleOpenAgentOpsHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -45,6 +63,10 @@ class GoogleOpenAgentOpsHandler(SimpleHTTPRequestHandler):
             payload = json.loads(body.decode("utf-8")) if body else {}
         except Exception:
             payload = {}
+
+        # Broadcast telemetry to connected SSE streaming clients
+        if payload:
+            broadcast_event(payload)
 
         if path in ("/api/agentops/telemetry", "/api/agentops/events"):
             event_type = payload.get("type", "REMOTE_EVENT")
@@ -116,14 +138,14 @@ class GoogleOpenAgentOpsHandler(SimpleHTTPRequestHandler):
                         )
                         new_span = Span(
                             span_id=span_id or "span-1",
-                            trace_id=data.get("trace_id", "trace-1"),
+                            trace_id=data.get("trace_id") or data.get("traceId", "trace-1"),
                             session_id=sid,
                             name=data.get("name", "agent"),
-                            span_kind=data.get("span_kind", "AGENT"),
-                            agent_name=data.get("agent_name"),
+                            span_kind=data.get("span_kind") or data.get("spanKind", "AGENT"),
+                            agent_name=data.get("agent_name") or data.get("agentName"),
                             model=data.get("model", "gemini-3.8-flash"),
                             status=data.get("status", "OK"),
-                            duration_ms=data.get("duration_ms", 0),
+                            duration_ms=data.get("duration_ms") if data.get("duration_ms") is not None else data.get("durationMs", 0),
                             input=data.get("input"),
                             output=data.get("output"),
                             thought=data.get("thought"),
@@ -147,6 +169,52 @@ class GoogleOpenAgentOpsHandler(SimpleHTTPRequestHandler):
                             else:
                                 s["thought"] = thought
                             break
+            elif event_type == "TOOL_CALLED":
+                sid = data.get("sessionId") or data.get("session_id")
+                span_id = data.get("spanId") or data.get("span_id")
+                tool_data = data.get("tool", {})
+                if sid and span_id and tool_data:
+                    sess = tracker.get_or_create_session(sid)
+                    for s in sess.spans:
+                        curr_id = s.span_id if hasattr(s, "span_id") else s.get("span_id")
+                        if curr_id == span_id:
+                            from google_openagentops.models import ToolCallRecord
+                            tc = ToolCallRecord(
+                                tool_name=tool_data.get("tool_name", "tool"),
+                                tool_call_id=tool_data.get("tool_call_id", "tool-1"),
+                                params=tool_data.get("params", {}),
+                                result=tool_data.get("result"),
+                                duration_ms=tool_data.get("duration_ms", 0)
+                            )
+                            if hasattr(s, "tool_calls"):
+                                s.tool_calls.append(tc)
+                            break
+            elif event_type == "GUARDRAIL":
+                sid = data.get("sessionId") or data.get("session_id")
+                if sid:
+                    tracker.record_guardrail(
+                        session_id=sid,
+                        name=data.get("name", "guardrail"),
+                        passed=data.get("passed", True),
+                        input_data=data.get("input"),
+                        output_data=data.get("output"),
+                        agent_name=data.get("agent_name"),
+                        score=data.get("score"),
+                        reason=data.get("reason")
+                    )
+            elif event_type == "CICD_EVENT":
+                ev = data.get("event", {})
+                tracker.record_cicd_event(
+                    pipeline_name=ev.get("pipeline_name", "pipeline"),
+                    run_id=ev.get("run_id", "run-1"),
+                    commit_sha=ev.get("commit_sha", "HEAD"),
+                    branch=ev.get("branch", "main"),
+                    status=ev.get("status", "SUCCESS"),
+                    duration_ms=ev.get("duration_ms", 0),
+                    environment=ev.get("environment", "production"),
+                    provider=ev.get("provider", "github-actions"),
+                    details=ev.get("details", {})
+                )
 
             # Broadcast to SSE subscribers without re-forwarding
             payload_out = {
@@ -168,6 +236,25 @@ class GoogleOpenAgentOpsHandler(SimpleHTTPRequestHandler):
             self.wfile.write(b'{"status": "ok", "ingested": true}')
             return
 
+        if path in ("/api/agentops/cicd", "/api/cicd"):
+            ev = tracker.record_cicd_event(
+                pipeline_name=payload.get("pipeline_name", "CI/CD Pipeline"),
+                run_id=payload.get("run_id", "run-1"),
+                commit_sha=payload.get("commit_sha", "HEAD"),
+                branch=payload.get("branch", "main"),
+                status=payload.get("status", "SUCCESS"),
+                duration_ms=payload.get("duration_ms", 0),
+                environment=payload.get("environment", "production"),
+                provider=payload.get("provider", "github-actions"),
+                details=payload.get("details", {})
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "event": ev.to_dict()}).encode("utf-8"))
+            return
+
         if path == "/api/agentops/register":
             tracker.register_solution(payload)
             self.send_response(200)
@@ -186,6 +273,54 @@ class GoogleOpenAgentOpsHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path in ("/api/agentops/stream", "/stream"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            q = queue.Queue(maxsize=200)
+            with _sse_lock:
+                _sse_subscribers.append(q)
+            try:
+                init_msg = json.dumps({"type": "SYSTEM", "timestamp": int(time.time() * 1000), "data": {"status": "STREAM_CONNECTED"}})
+                self.wfile.write(f"data: {init_msg}\n\n".encode("utf-8"))
+                self.wfile.flush()
+                while True:
+                    try:
+                        msg = q.get(timeout=2.0)
+                        self.wfile.write(f"data: {json.dumps(msg)}\n\n".encode("utf-8"))
+                        self.wfile.flush()
+                    except queue.Empty:
+                        self.wfile.write(b": keepalive\n\n")
+                        self.wfile.flush()
+            except (ConnectionResetError, BrokenPipeError, Exception):
+                pass
+            finally:
+                with _sse_lock:
+                    if q in _sse_subscribers:
+                        _sse_subscribers.remove(q)
+            return
+
+        if path in ("/api/agentops/metrics", "/api/metrics"):
+            metrics = tracker.get_aggregated_metrics()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(metrics).encode("utf-8"))
+            return
+
+        if path in ("/api/agentops/cicd", "/api/cicd"):
+            events = tracker.get_cicd_events()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"events": events, "count": len(events)}).encode("utf-8"))
+            return
 
         if path == "/api/agentops/context":
             self.send_response(200)
@@ -216,6 +351,17 @@ class GoogleOpenAgentOpsHandler(SimpleHTTPRequestHandler):
                 "solutions": solutions,
                 "gcpContext": active_context.to_dict()
             }).encode("utf-8"))
+            return
+
+        if "/replay" in path and ("/session/" in path or "/sessions/" in path):
+            parts = path.split("/replay")[0].split("/")
+            session_id = parts[-1]
+            replay = tracker.get_session_replay(session_id)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"sessionId": session_id, "events": replay, "count": len(replay)}).encode("utf-8"))
             return
 
         if path.startswith("/api/agentops/session/"):
